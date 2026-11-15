@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Filter } from 'lucide-react'
+import { getRegions, type Region, type Sensor } from '../../lib/api'
 
 export type DashboardFilterValues = {
-  sensor: string
+  sensor: Sensor
   state: string
   year: string
 }
@@ -12,6 +14,36 @@ type Props = {
 }
 
 export function DashboardFilters({ filters, onChange }: Props) {
+  const [regions, setRegions] = useState<Region[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadRegions() {
+      try {
+        const response = await getRegions(filters.sensor)
+
+        if (controller.signal.aborted) return
+
+        setRegions(response.regions)
+        setError(false)
+      } catch {
+        if (controller.signal.aborted) return
+
+        setRegions([])
+        setError(true)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    void loadRegions()
+
+    return () => controller.abort()
+  }, [filters.sensor])
+
   const update = (key: keyof DashboardFilterValues, value: string) => {
     onChange({ ...filters, [key]: value })
   }
@@ -20,7 +52,9 @@ export function DashboardFilters({ filters, onChange }: Props) {
     <section className="rounded-2xl border border-slate-800 bg-[#101b2d] p-5">
       <div className="mb-4 flex items-center gap-2">
         <Filter size={18} className="text-orange-400" />
-        <h3 className="font-semibold text-white">Explore Historical Data</h3>
+        <h3 className="font-semibold text-white">
+          Explore Historical Data
+        </h3>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -28,7 +62,13 @@ export function DashboardFilters({ filters, onChange }: Props) {
           <span className="block">Satellite sensor</span>
           <select
             value={filters.sensor}
-            onChange={(event) => update('sensor', event.target.value)}
+            onChange={(event) =>
+              onChange({
+                ...filters,
+                sensor: event.target.value as Sensor,
+                state: '',
+              })
+            }
             className="w-full rounded-lg border border-slate-700 bg-[#080f1c] p-3 text-white"
           >
             <option value="modis">MODIS Terra/Aqua</option>
@@ -42,14 +82,25 @@ export function DashboardFilters({ filters, onChange }: Props) {
           <select
             value={filters.state}
             onChange={(event) => update('state', event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-[#080f1c] p-3 text-white"
+            disabled={loading || error}
+            className="w-full rounded-lg border border-slate-700 bg-[#080f1c] p-3 text-white disabled:opacity-50"
           >
-            <option value="">All states</option>
-            <option value="CA">California</option>
-            <option value="TX">Texas</option>
-            <option value="FL">Florida</option>
-            <option value="OR">Oregon</option>
-            <option value="WA">Washington</option>
+            <option value="">
+              {loading
+                ? 'Loading states...'
+                : error
+                  ? 'Unable to load states'
+                  : 'All states'}
+            </option>
+
+            {regions.map((region) => (
+              <option
+                key={region.state_code}
+                value={region.state_code}
+              >
+                {region.state_name}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -71,6 +122,12 @@ export function DashboardFilters({ filters, onChange }: Props) {
           </select>
         </label>
       </div>
+
+      {error && (
+        <p className="mt-3 text-xs text-red-400">
+          Unable to retrieve regions from FireScope API.
+        </p>
+      )}
     </section>
   )
 }

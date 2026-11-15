@@ -17,8 +17,8 @@ Sensor = Literal["modis", "viirs_snpp", "viirs_noaa20"]
 
 
 class CalendarRecord(BaseModel):
-    state_code: str
-    state_name: str
+    state_code: str | None
+    state_name: str | None
     sensor: Sensor
     year: int = Field(ge=2000, le=2100)
     month: int = Field(ge=1, le=12)

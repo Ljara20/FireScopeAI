@@ -26,12 +26,16 @@ function App() {
         <main className="space-y-6 p-4 sm:p-6">
           <DashboardFilters filters={filters} onChange={setFilters} />
 
-          <MetricCards />
+          <MetricCards sensor={filters.sensor} state={filters.state} year={filters.year} />
 
           <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
             <MapPanel
               sensor={filters.sensor}
               state={filters.state}
+              year={filters.year}
+              onSelectState={(state) =>
+                setFilters((current) => ({ ...current, state }))
+              }
             />
 
             <TrendsPanel
