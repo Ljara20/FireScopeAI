@@ -1,0 +1,3 @@
+from typing import Protocol
+class Harmonizer(Protocol):
+    def harmonize(self, dataset_path: str) -> str: ...

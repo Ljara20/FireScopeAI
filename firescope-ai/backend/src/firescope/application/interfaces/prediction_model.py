@@ -1,0 +1,3 @@
+from typing import Mapping, Protocol
+class PredictionModel(Protocol):
+    def predict(self, features: Mapping[str, float]) -> float: ...
