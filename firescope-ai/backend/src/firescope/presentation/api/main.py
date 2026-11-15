@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from firescope.presentation.api.routers import (
+    anomalies,
     calendar,
     forecasts,
     preparedness,
@@ -33,6 +34,7 @@ def health() -> dict[str, str]:
 for router in (
     regions.router,
     calendar.router,
+    anomalies.router,
     forecasts.router,
     preparedness.router,
 ):
