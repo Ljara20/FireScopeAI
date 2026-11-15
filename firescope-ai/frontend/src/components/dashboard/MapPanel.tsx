@@ -181,7 +181,8 @@ export function MapPanel({ sensor, state, year, onSelectState }: Props) {
         </div>
 
         <div className="flex items-center gap-2 text-slate-400">
-          <span>Lower</span>
+          <span>Historical detections:</span>
+          <span>Fewer</span>
           {['#43302c', '#7c2d12', '#c2410c', '#ea580c', '#f97316'].map(
             (color) => (
               <span
@@ -191,7 +192,10 @@ export function MapPanel({ sensor, state, year, onSelectState }: Props) {
               />
             ),
           )}
-          <span>Higher</span>
+          <span>More</span>
+          <span className="text-slate-500">
+            (max: {maximum.toLocaleString()})
+          </span>
         </div>
       </div>
 
