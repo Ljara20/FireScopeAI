@@ -41,20 +41,3 @@ def test_existing_routes_are_registered() -> None:
 
     for route in expected_routes:
         assert route in schema["paths"]
-
-
-'''def test_unimplemented_routes_return_501() -> None:
-    routes = (
-        "/api/v1/forecasts",
-        "/api/v1/preparedness",
-    )'''
-
-def test_unimplemented_routes_return_501() -> None:
-    routes = (
-        "/api/v1/preparedness",
-    )
-
-    for route in routes:
-        response = client.get(route)
-
-        assert response.status_code == 501
