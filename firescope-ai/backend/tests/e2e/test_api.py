@@ -45,8 +45,6 @@ def test_existing_routes_are_registered() -> None:
 
 def test_unimplemented_routes_return_501() -> None:
     routes = (
-        "/api/v1/regions",
-        "/api/v1/calendar",
         "/api/v1/forecasts",
         "/api/v1/preparedness",
     )
