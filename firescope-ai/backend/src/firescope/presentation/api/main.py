@@ -1,8 +1,39 @@
+"""FireScope AI REST API."""
+
 from fastapi import FastAPI
-from firescope.presentation.api.routers import regions, calendar, forecasts, preparedness
-app = FastAPI(title="FireScope AI", version="0.1.0", description="Stage 1: Data Foundation")
-@app.get("/health")
+
+from firescope.presentation.api.routers import (
+    calendar,
+    forecasts,
+    preparedness,
+    regions,
+)
+
+app = FastAPI(
+    title="FireScope AI API",
+    version="0.1.0",
+    description=(
+        "Research API for historical MODIS and VIIRS satellite fire activity, "
+        "climatology, retrospective anomalies, and experimental model evaluation. "
+        "Not an operational wildfire early-warning system."
+    ),
+)
+
+
+@app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
-    return {"status": "ok", "stage": "data_foundation"}
-for router in (regions.router, calendar.router, forecasts.router, preparedness.router):
+    """Return the API health status."""
+    return {
+        "status": "ok",
+        "service": "firescope-api",
+        "version": "0.1.0",
+    }
+
+
+for router in (
+    regions.router,
+    calendar.router,
+    forecasts.router,
+    preparedness.router,
+):
     app.include_router(router, prefix="/api/v1")
