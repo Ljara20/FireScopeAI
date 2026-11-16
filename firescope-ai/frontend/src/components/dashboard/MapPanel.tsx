@@ -4,7 +4,7 @@ import { feature } from 'topojson-client'
 import type { FeatureCollection, Geometry } from 'geojson'
 import type { Topology } from 'topojson-specification'
 import { MapPinned } from 'lucide-react'
-import { getAllCalendar, getRegions } from '../../lib/api'
+import { useHistoricalData, useRegions } from '../../hooks/useHistoricalData'
 import type { Sensor } from '../../lib/api'
 import { normalizeStateName } from '../../lib/stateNames'
 
@@ -20,11 +20,10 @@ type StateFeature = FeatureCollection<Geometry, StateProperties>
 
 export function MapPanel({ sensor, state, year, onSelectState }: Props) {
   const [geography, setGeography] = useState<StateFeature | null>(null)
-  const [totals, setTotals] = useState<Record<string, number>>({})
-  const [names, setNames] = useState<Record<string, string>>({})
   const [hovered, setHovered] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const calendarQuery = useHistoricalData(sensor, year)
+  const regionsQuery = useRegions(sensor)
+  const [geographyError, setGeographyError] = useState(false)
 
   useEffect(() => {
     fetch('/geo/us-states.json')
@@ -37,57 +36,52 @@ export function MapPanel({ sensor, state, year, onSelectState }: Props) {
           feature(topology, topology.objects.states) as StateFeature,
         )
       })
-      .catch(() => setError(true))
+      .catch(() => setGeographyError(true))
   }, [])
 
-  useEffect(() => {
-    let active = true
+  const { totals, names } = useMemo(() => {
+    const regions = regionsQuery.isError ? undefined : regionsQuery.data
+    const records = calendarQuery.isError ? undefined : calendarQuery.data
 
-    Promise.all([
-      getRegions(sensor),
-      getAllCalendar(sensor, '', year ? Number(year) : undefined),
-    ])
-      .then(([regions, records]) => {
-        if (!active) return
-
-        const codes: Record<string, string> = {}
-        const stateNames: Record<string, string> = {}
-
-        for (const region of regions.regions) {
-          codes[normalizeStateName(region.state_name)] = region.state_code
-          stateNames[region.state_code] = region.state_name
-        }
-
-        const counts: Record<string, number> = {}
-
-        for (const record of records) {
-          if (!record.state_code) continue
-          counts[record.state_code] =
-            (counts[record.state_code] ?? 0) + record.detection_count
-        }
-
-        const mapped: Record<string, number> = {}
-
-        for (const [name, code] of Object.entries(codes)) {
-          if (code in counts) mapped[name] = counts[code]
-        }
-
-        setTotals(mapped)
-        setNames(codes)
-        setLoading(false)
-        setError(false)
-      })
-      .catch(() => {
-        if (active) {
-          setLoading(false)
-          setError(true)
-        }
-      })
-
-    return () => {
-      active = false
+    if (!regions || !records) {
+      return {
+        totals: {} as Record<string, number>,
+        names: {} as Record<string, string>,
+      }
     }
-  }, [sensor, year])
+
+    const codes: Record<string, string> = {}
+    const stateNames: Record<string, string> = {}
+
+    for (const region of regions.regions) {
+      codes[normalizeStateName(region.state_name)] = region.state_code
+      stateNames[region.state_code] = region.state_name
+    }
+
+    const counts: Record<string, number> = {}
+
+    for (const record of records) {
+      if (!record.state_code) continue
+      counts[record.state_code] =
+        (counts[record.state_code] ?? 0) + record.detection_count
+    }
+
+    const mapped: Record<string, number> = {}
+
+    for (const [name, code] of Object.entries(codes)) {
+      if (code in counts) mapped[name] = counts[code]
+    }
+
+    return { totals: mapped, names: codes }
+  }, [calendarQuery.data, calendarQuery.isError, regionsQuery.data, regionsQuery.isError])
+
+  const loading =
+    calendarQuery.isPending ||
+    calendarQuery.isFetching ||
+    regionsQuery.isPending ||
+    regionsQuery.isFetching ||
+    !geography
+  const error = calendarQuery.isError || regionsQuery.isError || geographyError
 
   const paths = useMemo(() => {
     if (!geography) return []
@@ -133,10 +127,11 @@ export function MapPanel({ sensor, state, year, onSelectState }: Props) {
       </p>
 
       <div className="mt-5 flex-1 rounded-xl bg-[#080f1c] p-3">
-        {loading && <p className="text-sm text-slate-400">Loading observations...</p>}
+        {loading && !error && <p className="text-sm text-slate-400">Loading observations...</p>}
         {error && <p className="text-sm text-red-400">Map data unavailable.</p>}
 
         <svg
+          style={{ opacity: loading || error ? 0.3 : 1 }}
           viewBox="0 0 960 600"
           className="h-auto w-full"
           role="img"

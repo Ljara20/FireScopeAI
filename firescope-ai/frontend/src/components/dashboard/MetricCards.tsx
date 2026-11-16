@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+
 import { CalendarDays, Flame, RadioTower, Zap, type LucideIcon } from 'lucide-react'
-import { getAllCalendar, type Sensor } from '../../lib/api'
+import type { Sensor } from '../../lib/api'
+import { useHistoricalData } from '../../hooks/useHistoricalData'
 import { calculateMetrics, type HistoricalMetrics } from '../../lib/metrics'
 
 type Props = {
@@ -23,32 +24,19 @@ const format = (value: number | null) =>
   }).format(value)
 
 export function MetricCards({ sensor, state, year }: Props) {
-  const [data, setData] = useState<HistoricalMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const query = useHistoricalData(sensor, year)
+  const records = !query.isPending && !query.isError
+    ? query.data.filter(
+        (record) => !state || record.state_code === state,
+      )
+    : []
 
-  useEffect(() => {
-    let active = true
+  const data: HistoricalMetrics | null = records.length
+    ? calculateMetrics(records, state)
+    : null
 
-    getAllCalendar(sensor, state, year ? Number(year) : undefined)
-      .then((records) => {
-        if (!active) return
-        setData(records.length ? calculateMetrics(records, state) : null)
-        setError(false)
-      })
-      .catch(() => {
-        if (!active) return
-        setData(null)
-        setError(true)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [sensor, state, year])
+  const loading = query.isPending || query.isFetching
+  const error = query.isError
 
   const metrics: Metric[] = [
     {

@@ -40,12 +40,13 @@ function App() {
 
             <TrendsPanel
               sensor={filters.sensor}
+              state={filters.state}
               year={filters.year}
             />
           </div>
 
           <p className="text-xs text-slate-500">
-            Interface preview · No live backend data connected yet.
+            Historical NASA FIRMS observations · Not real-time monitoring or wildfire forecasts.
           </p>
         </main>
       </div>
