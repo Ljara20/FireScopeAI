@@ -111,3 +111,59 @@ export async function getAllCalendar(
 
   return records
 }
+
+
+export interface ForecastRecord {
+  state_code: string | null
+  state_name: string | null
+  sensor: Sensor
+  year: number
+  month: number
+  feature_month: string
+  detection_count: number
+  independent_forecast_detection_count: number | null
+  independent_forecast_status:
+    | 'independent_test_prediction'
+    | 'insufficient_features'
+    | 'outside_test'
+  baseline_years: number
+  has_minimum_baseline: boolean
+  has_consecutive_previous_month: boolean
+}
+
+export interface ForecastsResponse {
+  records: ForecastRecord[]
+  count: number
+  limitations: string[]
+}
+
+export async function getAllForecasts(
+  sensor: Sensor,
+  stateCode = '',
+  year?: number,
+): Promise<ForecastRecord[]> {
+  const records: ForecastRecord[] = []
+  const limit = 1000
+
+  for (let offset = 0; ; offset += limit) {
+    const params: Record<string, string | number> = {
+      sensor,
+      limit,
+      offset,
+    }
+
+    if (stateCode) params.state_code = stateCode
+    if (year !== undefined) params.year = year
+
+    const page = await apiGet<ForecastsResponse>(
+      '/api/v1/forecasts',
+      params,
+    )
+
+    records.push(...page.records)
+
+    if (page.records.length < limit) break
+  }
+
+  return records
+}

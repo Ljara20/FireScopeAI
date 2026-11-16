@@ -7,7 +7,12 @@ const navigation = [
   { label: 'Experimental Model', icon: ChartNoAxesCombined },
 ]
 
-export function Sidebar() {
+type Props = {
+  activePage: string
+  onNavigate: (page: string) => void
+}
+
+export function Sidebar({ activePage, onNavigate }: Props) {
   return (
     <aside className="w-full border-b border-slate-800 bg-[#0b1424] lg:min-h-screen lg:w-64 lg:border-b-0 lg:border-r">
       <div className="flex items-center gap-3 border-b border-slate-800 px-6 py-6">
@@ -21,18 +26,21 @@ export function Sidebar() {
       </div>
 
       <nav aria-label="Main navigation" className="space-y-2 p-4">
-        {navigation.map(({ label, icon: Icon }, index) => (
-          <div
+        {navigation.map(({ label, icon: Icon }) => (
+          <button
             key={label}
-            className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${
-              index === 0
+            type="button"
+            onClick={() => onNavigate(label)}
+            aria-current={activePage === label ? 'page' : undefined}
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm ${
+              activePage === label
                 ? 'bg-orange-500/10 font-semibold text-orange-400'
                 : 'text-slate-400'
             }`}
           >
             <Icon size={19} />
             <span>{label}</span>
-          </div>
+          </button>
         ))}
       </nav>
 
