@@ -25,14 +25,14 @@ export function Sidebar({ activePage, onNavigate }: Props) {
         </div>
       </div>
 
-      <nav aria-label="Main navigation" className="space-y-2 p-4">
+      <nav aria-label="Main navigation" className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4 lg:grid-cols-1 lg:p-4">
         {navigation.map(({ label, icon: Icon }) => (
           <button
             key={label}
             type="button"
             onClick={() => onNavigate(label)}
             aria-current={activePage === label ? 'page' : undefined}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm ${
+            className={`flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left text-xs transition-colors hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-cyan-400 sm:text-sm lg:gap-3 lg:px-4 ${
               activePage === label
                 ? 'bg-orange-500/10 font-semibold text-orange-400'
                 : 'text-slate-400'
@@ -44,7 +44,7 @@ export function Sidebar({ activePage, onNavigate }: Props) {
         ))}
       </nav>
 
-      <div className="mx-4 mt-6 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+      <div className="mx-4 mt-6 hidden rounded-xl lg:block border border-slate-700 bg-slate-800/40 p-4">
         <div className="flex items-center gap-2 text-sm font-medium text-cyan-400">
           <Activity size={17} />
           Historical Data

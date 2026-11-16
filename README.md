@@ -3,9 +3,252 @@
 ### From fragmented satellite fire observations to transparent, reproducible geospatial intelligence
 
 **NASA Space Apps Challenge 2026 — Harmonization of MODIS and VIIRS Hot Spots**  
-**Project status:** Historical data pipeline and experimental forecasting validation completed through **Phase 3.4**; Phase 3.5 and Phases 4–7 are proposed roadmap stages. Operational forecasting, calibrated fire-risk probabilities, production API, and interactive dashboard remain future work.
+**Project status:** Historical NASA FIRMS data processing, retrospective anomaly analysis, experimental model validation, a read-only FastAPI backend, and an interactive React dashboard are implemented. The application provides historical analytics and retrospective model evaluation—not real-time wildfire monitoring, operational forecasting, or calibrated fire-risk probabilities.
 
 > **Scientific integrity first.** A satellite hotspot is an observation, not necessarily a unique wildfire. Detection counts are not burned area, fire severity, ignition probability, or an official warning. FireScope AI explicitly distinguishes observed detections, exploratory sensor adjustments, historical anomalies, and model estimates.
+
+
+## Current MVP — Interactive Historical Analytics
+
+FireScope AI provides an interactive dashboard for exploring historical
+NASA FIRMS satellite detections across the United States.
+
+### Implemented application
+
+The frontend uses React, TypeScript, Vite, Tailwind CSS, and React Query.
+The backend provides read-only analytical endpoints using FastAPI.
+
+The application includes four main views:
+
+| View | Functionality |
+| --- | --- |
+| **Overview** | Historical detection metrics, geographic visualization, and temporal trends. |
+| **Fire Calendar** | Monthly distribution of satellite detections for the selected sensor, region, and year. |
+| **Historical Anomalies** | Retrospective comparison of monthly detection counts against comparable historical months. |
+| **Experimental Model** | Observed versus retrospectively estimated detection counts and evaluation errors. |
+
+Users can filter historical data by satellite sensor, U.S. state, and year.
+
+The frontend uses lazy-loaded dashboard components and shared
+React Query caching.
+
+### Historical Anomalies
+
+The dashboard compares observed satellite detections for a selected
+calendar month against the arithmetic mean for the same calendar
+month in other historical years with available observations.
+
+Let:
+
+- `D` = observed detection count for the selected month.
+- `H` = mean detection count for the same calendar month across other
+  available historical years.
+
+The displayed percentage deviation is:
+
+    Historical deviation (%) = 100 * (D - H) / H
+
+A positive percentage indicates more detections than the historical
+monthly average. A negative percentage indicates fewer detections.
+
+For example, `+25%` means the observed count exceeds the historical
+monthly average by 25%. It does not mean wildfire probability
+increased by 25%.
+
+The interactive comparison requires at least two comparable historical
+years and a positive historical mean.
+
+When a valid comparison is unavailable, the dashboard displays
+an unavailable result rather than inventing a value.
+
+**Methodological distinction:** The dashboard's percentage-based
+comparison is descriptive. The backend also implements a separate
+retrospective anomaly-processing pipeline using historical statistics,
+prior-year baselines, and minimum-history requirements.
+
+These methods should not be treated as identical.
+
+Missing observations must not automatically be interpreted as zero
+wildfire activity.
+
+Satellite detections are not unique fires, burned area, fire severity,
+or emergency alerts.
+
+### Experimental Model
+
+The experimental model evaluates whether a statistical model can
+estimate monthly satellite detection counts more accurately than
+a seasonal historical benchmark.
+
+It does not predict unique wildfires, ignition probabilities,
+or operational wildfire risk.
+
+#### Prediction target
+
+The target is the observed number of satellite detections for a
+state, sensor, and calendar month.
+
+The target transformation is:
+
+    y = log(1 + detection_count)
+
+Predictions are transformed back to detection-count units using:
+
+    estimated_detection_count = exp(predicted_y) - 1
+
+The implementation constrains predicted log counts to nonnegative
+values and applies an upper bound before the inverse transformation.
+
+#### Algorithm
+
+FireScope AI uses a separate Ridge regression model for each sensor:
+
+- MODIS
+- VIIRS SNPP
+- VIIRS NOAA-20
+
+The implementation uses scikit-learn Ridge regression with
+`alpha = 10.0`.
+
+Input features include:
+
+- U.S. state identity.
+- Log-transformed previous-month detection count.
+- Log-transformed historical seasonal mean.
+- Cyclical calendar-month features (`sin` and `cos`).
+- Number of available historical baseline years, capped at 30.
+
+Eligible records require a consecutive previous-month observation,
+a valid seasonal baseline, and at least three prior observed years
+contributing to the baseline.
+
+#### Training objective
+
+Ridge regression minimizes squared prediction error with L2
+regularization.
+
+Its objective can be expressed as:
+
+    Ridge objective =
+        sum((actual_log_count - predicted_log_count)^2)
+        + alpha * sum(coefficient^2)
+
+The regularization term penalizes large coefficients.
+
+**Important:** The training objective is not MAE.
+MAE is used to evaluate and compare the resulting estimates.
+
+#### Evaluation metric
+
+The primary scientific comparison uses mean absolute error
+on the log-transformed detection-count scale:
+
+    log-MAE =
+        mean(abs(log(1 + actual) - log(1 + estimated)))
+
+Lower log-MAE indicates better performance.
+
+The seasonal baseline is the historical mean for the same state,
+sensor, and calendar month.
+
+Relative improvement is calculated as:
+
+    Improvement (%) =
+        100 * (baseline_log_MAE - model_log_MAE)
+            / baseline_log_MAE
+
+Positive improvement means the model outperformed the baseline.
+Negative improvement means the model performed worse.
+
+#### Independent chronological validation
+
+The independent evaluation separates model fitting,
+method selection, and final testing.
+
+| Stage | Period | Purpose |
+| --- | --- | --- |
+| Training | Through 2021 | Fit candidate Ridge models. |
+| Model selection | 2022–2023 | Compare Ridge against the seasonal baseline. |
+| Independent testing | 2024–2025 | Evaluate the selected method on a separate chronological period. |
+
+When Ridge is selected, it is refitted using eligible observations
+through 2023.
+
+The 2024–2025 test period is not used for fitting or method selection.
+
+This is a retrospective, rolling one-month-ahead evaluation
+using observed previous-month information.
+
+It is not a deployed future forecasting service.
+
+#### Independent-test results
+
+| Sensor | Selected method | Model log-MAE | Baseline log-MAE | Relative improvement |
+| --- | --- | ---: | ---: | ---: |
+| MODIS | Ridge | 0.577982 | 0.590715 | +2.16% |
+| VIIRS SNPP | Ridge | 0.497817 | 0.506456 | +1.71% |
+| VIIRS NOAA-20 | Ridge | 0.500977 | 0.482723 | -3.78% |
+
+Ridge modestly outperformed the seasonal baseline for MODIS
+and VIIRS SNPP.
+
+For VIIRS NOAA-20, Ridge performed worse than the baseline.
+
+This negative result is reported explicitly.
+
+These findings do not establish consistent predictive superiority,
+statistical significance, or operational reliability.
+
+#### Dashboard MAE versus scientific log-MAE
+
+The Experimental Model dashboard displays mean absolute error
+in original satellite-detection units for the currently
+selected records:
+
+    Dashboard MAE =
+        mean(abs(actual_detection_count - estimated_detection_count))
+
+This metric describes the average absolute difference between
+observed and estimated counts for the selected region and period.
+
+It differs from the log-MAE used for the independent-test
+sensor-level comparisons.
+
+Dashboard MAE values must not be compared directly with
+the log-MAE values in the evaluation table.
+
+#### Scientific limitations
+
+- The evaluation is retrospective, not an operational future forecast.
+- Satellite detections are not unique wildfire events.
+- Models are sensor-specific; MODIS and VIIRS counts are not interchangeable.
+- Missing months are not automatically imputed as zero.
+- Forecast-origin availability of all upstream features has not
+  been fully verified.
+- Satellite orbital coverage and observation biases are not corrected.
+- No calibrated uncertainty intervals are provided.
+- No statistical-significance claims are made.
+- Evaluation uses a single independent chronological test block.
+- An earlier experimental procedure selected Ridge or the seasonal
+  baseline using the same holdout period, creating selection bias.
+  That procedure must not be confused with independent testing.
+
+FireScope AI therefore presents model estimates exclusively
+as **experimental retrospective model evaluation**.
+
+### Engineering validation
+
+The Phase 7 validation reported:
+
+- Frontend ESLint: passed.
+- Frontend TypeScript and Vite production build: passed.
+- Backend automated tests: **133 passed**.
+- One non-blocking Starlette/httpx deprecation warning.
+
+These results demonstrate engineering checks, not scientific
+certification or operational wildfire-alert readiness.
+
+---
 
 ## 1. Executive overview
 
@@ -54,7 +297,9 @@ NASA FIRMS archives (MODIS, VIIRS SNPP, VIIRS NOAA-20)
                          │
            Independent chronological model testing
                          │
-                [Planned: API + geospatial UI]
+             Read-only FastAPI analytical endpoints
+                         │
+              Interactive React dashboard
 ```
 
 **Key distinction:** The cross-sensor adjustment is exploratory. It does **not** establish that MODIS and VIIRS detections have become physically equivalent, nor does it justify indiscriminate summation across sensors. Forecasting currently operates **per sensor**, using historical detection counts rather than a proven cross-sensor fire-risk target.
@@ -212,80 +457,111 @@ When Ridge is selected, it is refitted using observations available through 2023
 **Output:** `data/processed/firescope_usa_fire_forecast_validation.parquet`.  
 **Entry point:** `backend/scripts/validate_fire_forecasts.py`.
 
-### Phase 3.5 — Proposed: model-readiness and scientific handoff — not implemented
+### Phase 3.5 — Model readiness and scientific handoff — implemented
 
-**Objective:** convert the independent evaluation findings into an explicit, versioned decision about what the MVP is permitted to display. This is a **proposed scope**, not a previously agreed or completed deliverable.
+**Objective:** establish explicit scientific release boundaries for the MVP.
 
-**Why it is necessary:** Phase 3.4 selected Ridge for all three sensors on 2022–2023, but the independent 2024–2025 test showed that NOAA-20 Ridge was **3.78% worse** than the seasonal benchmark. A positive validation-period result is not a guarantee of generalization. The MVP therefore needs an evidence-based policy, not an unconditional "AI prediction" badge.
+The model-readiness workflow evaluates the available historical
+analytics and retrospective model evidence, then records a release
+decision of `historical_analytics_only`.
 
-**Proposed implementation sequence:**
+**Permitted outputs:**
 
-1. **Freeze evaluation artifacts.** Preserve the train/selection/test definitions, sensor-level metrics, model configuration, baseline specification, and provenance of the evaluated data. Never tune a final model on the 2024–2025 test while continuing to call that period an untouched holdout.
-2. **Audit temporal availability.** Verify, for each forecast origin, that all lag and seasonal features existed at prediction time; flag gaps, short histories, sensor transitions, and incomplete coverage. Do not impute missing months as zero.
-3. **Assess robustness.** Report state-level error distributions, year-by-year performance, sample sizes, and uncertainty or paired error comparisons where defensible. Treat the small MODIS/SNPP improvements as provisional until their stability is understood.
-4. **Define the display policy.** For the current historical MVP, publish observations, seasonal baselines, and retrospective anomalies as the primary outputs. Show forecasting only as **experimental retrospective evaluation**, with its sensor, horizon, period, benchmark, and limitations. The NOAA-20 independent-test result must remain visible even if the validation period selected Ridge.
-5. **Define machine-readable contracts.** Specify stable columns, units, null semantics, model and data versions, provenance, confidence/coverage flags, and status values for the future API. Reject unsupported claims such as "wildfire probability" or "early warning".
-6. **Run a release gate.** Verify complete tests, row/detection conservation, dependency reproducibility, source-data citations, and human-readable caveats. Record any failure as a known limitation or block the corresponding feature.
+- Historical NASA FIRMS satellite detections.
+- Historical seasonal patterns and climatology.
+- Retrospective anomalies.
+- Experimental retrospective model evaluation.
 
-**Proposed deliverables:** `docs/model-readiness.md`, `docs/data-contracts.md`, a model-evaluation summary suitable for the UI, and automated checks for temporal leakage and response contracts. **These files are planned, not currently claimed to exist.**
+**Not permitted as validated operational outputs:**
 
-**Exit criterion:** an auditable MVP data contract and an explicit decision separating validated historical analytics from experimental modeling. Operational future forecasts require additional research, independent validation, and an actual future-date inference workflow.
+- Real-time wildfire early warnings.
+- Calibrated wildfire occurrence probabilities.
+- Predictions of unique wildfire events.
+- Validated future-date wildfire forecasts.
 
-### Phase 4 — Planned: backend API and application integration
+The independent 2024–2025 results remain part of the scientific
+evidence, including the negative VIIRS NOAA-20 result.
 
-**Objective:** expose the existing analytical products through a stable, documented interface without changing their scientific meaning.
+The release decision does not imply that all temporal-availability,
+coverage, uncertainty, or robustness questions have been resolved.
 
-**Work packages:**
+### Phase 4 — Read-only backend API — implemented for the MVP
 
-1. **Read-only analytical service.** Implement FastAPI endpoints for supported regions, sensor metadata, monthly and daily activity, climatology, anomalies, and retrospective evaluation. Define pagination, date filters, schema validation, and meaningful empty-data responses.
-2. **Query and storage layer.** Start with DuckDB querying curated Parquet artifacts; add PostgreSQL/PostGIS only if real deployment requirements justify it. Avoid introducing infrastructure merely for architectural appearance.
-3. **Spatial aggregation.** Return state and H3 resolution-5 summaries with consistent geographic identifiers. Preserve sensor-specific series and provide coverage indicators so a map cannot imply comparable observations where none exist.
-4. **Scientific metadata.** Include observation type, source sensor, processing date, temporal grain, baseline years, method, and caveats in API responses. Distinguish `observed`, `historical_baseline`, `retrospective_anomaly`, and `experimental_forecast` explicitly.
-5. **Contract and performance tests.** Validate response schemas, numerical totals, null handling, filters, invalid inputs, and representative query latency on realistic data volumes.
+**Objective:** expose historical analytical products through
+a read-only application interface.
 
-**Proposed deliverables:** versioned API endpoints, OpenAPI documentation, a thin application-service layer, integration tests, and deployment configuration. **Not yet implemented or validated as a production API.**
+**Implemented technology:** Python, FastAPI, DuckDB, and Parquet.
 
-**Exit criterion:** the frontend can retrieve consistent, sensor-aware historical insights through tested endpoints without performing data-science calculations in the browser.
+**Available endpoint families:**
 
-### Phase 5 — Planned: interactive geospatial MVP and explanation experience
+- `/api/v1/regions`
+- `/api/v1/calendar`
+- `/api/v1/forecasts`
+- `/api/v1/anomalies`
+- `/api/v1/preparedness`
 
-**Objective:** turn the analytical pipeline into the competition-facing experience originally proposed: a map-led, evidence-based exploration of historical fire activity.
+The API supports the interactive historical analytics application.
+Forecast-related responses represent experimental retrospective
+evaluation, not operational future wildfire predictions.
 
-**Proposed experience:**
+A deployed, independently audited production API is not claimed.
 
-1. **Explore where.** An interactive U.S. map, state selector, and optional H3 overlay show observed activity, with clear legends and time/sensor filters.
-2. **Explore when.** A historical fire calendar and seasonal chart explain how observed activity changes across months and years; gaps are labeled as unavailable rather than silently shown as zero.
-3. **Explore what is unusual.** Retrospective anomaly cards show the observed count, comparable historical baseline, and reason for an `insufficient_baseline` status.
-4. **Understand sensor differences.** A MODIS/VIIRS comparison panel explains resolution, coverage, provenance, and the **exploratory** status of harmonization factors; it does not combine sensor counts into a physically unified wildfire total.
-5. **Understand the models.** A clearly marked experimental section compares Ridge with the seasonal benchmark on the independent test, including the negative NOAA-20 result and the actual evaluation horizon.
-6. **Understand implications.** Plain-language explanations and preparedness context help users interpret trends without presenting them as official fire-danger ratings, evacuation instructions, or imminent-event predictions.
-7. **Accessibility and usability.** Provide readable legends, keyboard navigation, responsive layouts, loading/error states, and transparent methodology links.
+### Phase 5 — Interactive dashboard — implemented for the MVP
 
-**Proposed stack:** Next.js, React, TypeScript, MapLibre or an equivalent mapping library, and an accessible charting solution; the final choice should reflect team capacity and deployment constraints.
+**Objective:** provide an interactive interface for exploring
+NASA-derived historical satellite detections and scientific context.
 
-**Proposed deliverables:** responsive MVP frontend, API integration, end-to-end user journeys, accessibility checks, and an explanation panel with links to data provenance and scientific limitations.
+**Implemented technology:** React, TypeScript, and Vite.
 
-**Exit criterion:** a reviewer can select a U.S. region, inspect NASA-derived historical observations, compare seasonal context, identify retrospective anomalies, and understand the limitations of sensor comparisons and experimental forecasts.
+**Available views:**
 
-### Phase 6 — Planned: reproducibility, deployment, and operational safeguards
+1. **Overview:** historical activity and geographic context.
+2. **Fire Calendar:** historical monthly activity.
+3. **Historical Anomalies:** descriptive comparison against
+   comparable historical calendar months.
+4. **Experimental Model:** observed versus retrospectively
+   estimated detection counts and evaluation errors.
 
-**Objective:** make the MVP independently runnable and safe to demonstrate, without claiming real-time operational fire monitoring.
+The application includes responsive navigation, shared React Query
+caching, and lazy-loaded dashboard components.
 
-**Work packages:** clean-environment dependency installation; environment-variable templates without secrets; automated tests and linting; versioned pipeline manifests; checksum-based archive provenance; build/deployment automation; API and UI smoke tests; performance checks; error logging; and a documented refresh strategy. Any future automated NASA data refresh must explicitly distinguish source latency, archive updates, missing coverage, and data-processing failures.
+The implemented frontend must not be confused with the earlier
+proposal to use Next.js or a specific mapping library.
 
-**Proposed deliverables:** deployment guide, reproducibility checklist, CI configuration, data-refresh runbook, and documented known limitations.
+The dashboard is an interactive historical-analysis MVP,
+not a certified operational wildfire monitoring platform.
 
-**Exit criterion:** another developer can clone the repository, obtain the documented NASA sources, reproduce the supported pipeline with the required resources, and launch a demonstrable application without relying on undocumented local state.
+### Phase 6 — Engineering validation and deployment safeguards — partially completed
 
-### Phase 7 — Planned: NASA Space Apps submission, evidence, and MVP demonstration
+**Completed engineering checks:**
 
-**Objective:** communicate a scientifically defensible solution to the challenge and demonstrate the end-to-end user journey.
+- Frontend ESLint passed.
+- Frontend TypeScript and Vite production build passed.
+- Backend automated tests: 133 passed.
+- One non-blocking Starlette/httpx deprecation warning was reported.
 
-**Work packages:** prepare a short demonstration showing NASA data provenance → harmonized analytical units → regional historical insights → anomaly interpretation → transparent model evaluation; document the challenge fit and target users; cite the official NASA datasets; include architecture and reproducibility instructions; disclose what is and is not implemented; and test the live demo or recorded fallback.
+**Further work:** independently verified deployment, automated
+data-refresh operations, production monitoring, broader performance
+testing, and reproducibility checks in a clean external environment.
 
-**Proposed deliverables:** final competition README, project summary, architecture graphic, demo video or walkthrough, reproducibility evidence, acknowledgments, and a limitations statement.
+Passing development tests does not establish production readiness
+or operational wildfire-alert reliability.
 
-**Exit criterion:** the submission can answer **what problem was addressed, which NASA data were used, how MODIS/VIIRS differences were handled, what evidence supports the results, who benefits, and what remains future work**.
+### Phase 7 — MVP integration and documentation — implemented; submission artifacts pending verification
+
+**Implemented:** integration of the read-only analytical API
+and interactive dashboard, retrospective anomaly explanations,
+experimental model evaluation views, and the documented
+engineering validation checks.
+
+**Documentation:** this README records the implemented MVP,
+scientific methods, independent-test results, and known limitations.
+
+**Not yet verified here:** a publicly deployed demonstration,
+competition submission, final video, and independent deployment audit.
+
+The NASA Space Apps submission package should be marked complete
+only after its required artifacts and submission status are verified.
 
 ### MVP definition and release boundaries
 
@@ -500,13 +776,13 @@ The pipeline demonstrates scalable columnar processing over **14.29 million obse
 
 ### What is demonstrated versus what remains aspirational
 
-**Demonstrated:** USA data ingestion, auditing, normalization, state/H3 attribution, temporal aggregation, exploratory harmonization, climatology, anomalies, experimental forecasting, and chronological model evaluation.
+**Demonstrated:** USA data ingestion, auditing, normalization, state/H3 attribution, temporal aggregation, exploratory harmonization, climatology, retrospective anomalies, experimental forecasting evaluation, independent chronological model testing, a read-only FastAPI backend, and an interactive React dashboard.
 
-**Not yet demonstrated:** a validated global harmonization standard, corrected orbital coverage, wildfire occurrence probabilities, operational early warnings, wildfire severity estimation, live monitoring, production map dashboard, weather/vegetation-based causal explanations, or measured reduction in real-world fire impacts.
+**Not yet demonstrated:** a validated global harmonization standard, corrected orbital coverage, wildfire occurrence probabilities, operational early warnings, wildfire severity estimation, live monitoring, independently audited production deployment, weather/vegetation-based causal explanations, or measured reduction in real-world fire impacts.
 
 ## 10. Product vision and future extensions
 
-The project vision envisages an interactive geographic dashboard answering four questions: **What is happening? When does it usually happen? Where may activity intensify next? How should stakeholders prepare?** The planned user experience combines a map, historical calendar, regional activity trends, explainable forecasts, and contextual preparedness guidance.
+The implemented MVP provides an interactive historical analytics dashboard with geographic context, a fire calendar, retrospective anomalies, and experimental model evaluation. The broader product vision also considers future risk-oriented questions, but the current application does not provide validated future wildfire predictions, real-time alerts, or operational preparedness decisions.
 
 Longer-term research could add weather and vegetation covariates, explicit coverage correction, calibrated event-probability targets, multi-horizon evaluation, uncertainty quantification, and expansion beyond the United States. Any such extension must use only features available at the actual forecast origin and must be independently evaluated before its output is described as risk or probability.
 
@@ -542,4 +818,4 @@ Before pushing to GitHub (run Git commands from the **outer `FireScopeAI/` repos
 **Official NASA data access:** https://firms.modaps.eosdis.nasa.gov/download/ (historical archive); https://firms.modaps.eosdis.nasa.gov/active_fire/ (product descriptions and recent data).  
 **Development approach:** phased delivery, Clean Architecture, reproducible data processing, sensor-aware validation, and transparent scientific limitations.
 
-*This README reflects the project proposal, continuity notes, available phase-code packages, and reported pipeline/test outputs reviewed before Phase 4. It does not claim that a production system or independent deployment audit has been completed.*
+*This README documents the implemented historical analytics MVP, its scientific limitations, and reported engineering validation. It does not claim operational wildfire forecasting, a certified production system, or an independent deployment audit.*
